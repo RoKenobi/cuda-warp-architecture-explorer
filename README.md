@@ -1,271 +1,287 @@
-# GPU Reliability & Architecture Analysis Platform
+===============================================================================
+                    CUDA Warp Architecture Explorer
+              GPU Execution Model Benchmarking on NVIDIA A100
+===============================================================================
 
-A comprehensive suite of 3 projects demonstrating GPU computing, machine learning, 
-and high-performance computing (HPC) on the NSCC ASPIRE2A supercomputer with 
-NVIDIA A100 GPUs.
+Project Name Suggestion: cuda-warp-architecture-explorer
 
-## Overview
+===============================================================================
+TABLE OF CONTENTS
+===============================================================================
 
-Modern GPU failures rarely occur as isolated events. Hardware instability emerges 
-through cascading subsystem interactions:
+1. Overview
+2. System Architecture
+3. Benchmarks Included
+4. Results Summary
+5. Technical Deep Dive
+6. ASPIRE2A HPC Deployment
+7. Quick Start Guide
+8. Repository Structure
+9. Key Learnings
+10. License
 
-    Voltage Instability → Thermal Rise → Memory Pressure → GPU Crash
+===============================================================================
+1. OVERVIEW
+===============================================================================
 
-This repository contains three distinct projects that together form a complete 
-GPU reliability and architecture analysis platform:
+This project explores low-level GPU execution behavior on NVIDIA A100 GPUs 
+through custom CUDA C++ micro-benchmarks. It measures three critical 
+performance factors that affect all GPU workloads:
 
-1. HPC CUDA Performance Profiler - Kernel optimization and bottleneck analysis
-2. GPU Failure Simulation & ML Diagnostic Platform - Automated failure diagnosis
-3. CUDA Warp Architecture Explorer - Low-level GPU execution model analysis
+    - Warp Divergence: Performance penalty when threads take different paths
+    - Memory Bank Conflicts: Latency spikes from shared memory access patterns
+    - Kernel Occupancy: Throughput vs. block size trade-offs
 
-All projects were executed on ASPIRE2A using PBS job scheduling with proper 
-GPU resource allocation (1 GPU : 16 CPU : 110GB RAM).
+Unlike high-level ML frameworks, this project operates at the kernel level,
+providing insights into how the GPU silicon actually executes your code.
 
-## Project Structure
+===============================================================================
+2. SYSTEM ARCHITECTURE
+===============================================================================
 
-    gpu-reliability-platform/
-    ├── project-1-cuda-profiler/
-    │   ├── src/
-    │   │   ├── kernel_benchmarks.cu
-    │   │   └── analyze_performance.py
-    │   ├── run_profiler.pbs
-    │   └── results/
-    ├── project-2-failure-ml/
-    │   ├── src/
-    │   │   ├── cuda_simulator.py
-    │   │   ├── graph_analyzer.py
-    │   │   ├── ml_supervised.py
-    │   │   └── ml_anomaly.py
-    │   ├── run_gpu_pipeline.pbs
-    │   ├── data/
-    │   ├── models/
-    │   └── logs/
-    └── project-3-warp-architecture/
-        ├── src/
-        │   ├── warp_divergence.cu
-        │   ├── memory_bank.cu
-        │   ├── occupancy.cu
-        │   └── analyze_results.py
-        ├── run_benchmarks.pbs
-        └── results/
+    +------------------+     +-------------------+     +------------------+
+    |  PBS Job Script  | --> |  CUDA Kernels     | --> |  Results (CSV)   |
+    |  (Resource Mgmt) |     |  (C++/CUDA)       |     |  + Plots (PNG)   |
+    +------------------+     +-------------------+     +------------------+
+           |                        |                         |
+           v                        v                         v
+    ASPIRE2A Scheduler      NVIDIA A100 GPU          Python Analysis
+    (1 GPU:16 CPU:110GB)    (Ampere Architecture)    (Matplotlib/Pandas)
 
-## Project 1: HPC CUDA Performance Profiler
+Hardware Target:
+    - GPU: NVIDIA A100-SXM4-40GB (Ampere Architecture)
+    - CUDA Version: 12.4
+    - HPC Cluster: NSCC ASPIRE2A
+    - Job Scheduler: PBS Pro
 
-### Objective
-Identify performance bottlenecks in custom CUDA kernels processing 256M+ elements.
+===============================================================================
+3. BENCHMARKS INCLUDED
+===============================================================================
 
-### Key Findings
-    Metric                      Result
-    Uncoalesced Memory Access   5.9× performance degradation
-    Atomic Contention           5.5× slowdown
-    Kernel Launches Tracked     3,100+
+Benchmark 1: Warp Divergence (src/warp_divergence.cu)
+---------------------------------------------------------
+Measures throughput degradation when threads within a warp execute different
+control flow paths. Warps execute 32 threads in lockstep — divergence forces
+serialization.
 
-### Tools Used
-    - Nsight Systems for profiling
-    - CUDA Events for nanosecond timing
-    - Python (Pandas + Plotly) for telemetry visualization
+    Uniform Kernel:    All threads execute same branch
+    Divergent Kernel:  50% threads take one branch, 50% take another
 
-### PBS Configuration
-    #PBS -l select=1:ncpus=16:mem=110G:ngpus=1
-    #PBS -l walltime=02:00:00
-    #PBS -q normal
+Benchmark 2: Memory Bank Conflicts (src/memory_bank.cu)
+---------------------------------------------------------
+Analyzes shared memory access patterns and their impact on latency. A100 has
+32 shared memory banks — conflicts occur when multiple threads access the
+same bank simultaneously.
 
-## Project 2: GPU Failure Simulation & ML Diagnostic Platform
+    Stride 1:   Threads access Bank 0,1,2,3... (no conflict)
+    Stride 32:  All threads access Bank 0,0,0,0... (max conflict)
 
-### Objective
-Simulate GPU telemetry data and train ML models to diagnose hardware failures.
+Benchmark 3: Kernel Occupancy (src/occupancy.cu)
+---------------------------------------------------------
+Tests different block sizes to find optimal throughput. More threads does not
+always equal faster execution due to register pressure and resource limits.
 
-### Architecture
+    Block Sizes Tested: 128, 256, 512, 1024 threads per block
 
-    CUDA Simulation (Numba)
-            ↓
-    1M+ Telemetry Records
-            ↓
-    Graph Analysis (NetworkX)
-            ↓
-    Supervised ML (XGBoost + RF)
-            ↓
-    Unsupervised Anomaly Detection (Isolation Forest)
+===============================================================================
+4. RESULTS SUMMARY
+===============================================================================
 
-### Components
++------------------------+------------------+------------------+-------------+
+| Benchmark              | Best Case        | Worst Case       | Degradation |
++------------------------+------------------+------------------+-------------+
+| Warp Divergence        | 998.43 ms        | 1990.37 ms       | 1.99x       |
++------------------------+------------------+------------------+-------------+
+| Memory Bank (Stride)   | 34.48 ms (2)     | 545.49 ms (32)   | 15.8x       |
++------------------------+------------------+------------------+-------------+
+| Occupancy (Block Size) | 0.0051 ms (512)  | 1.6763 ms (128)  | 328x        |
++------------------------+------------------+------------------+-------------+
 
-#### Component 1: CUDA Failure Simulation
-    - Parallel telemetry generation using Numba CUDA kernels
-    - 4 failure classes: Stable, Power Instability, Thermal Throttling, Memory Leak
-    - 15% failure injection rate (150K failures from 1M events)
+Key Findings:
 
-#### Component 2: Graph-Based Root Cause Analysis
-    - Models subsystem dependencies (Power → Voltage → Thermal → GPU Core)
-    - Calculates degree centrality to identify critical failure nodes
-    - GPU Core identified as highest centrality (0.8000)
+    1. Warp divergence causes ~2x slowdown on A100 when branches split 50/50.
+       This is lower than older GPUs due to Ampere's independent thread
+       scheduling feature.
 
-#### Component 3: Supervised ML Classification
-    - Random Forest baseline + XGBoost industry standard
-    - 99% F1-score across all 4 failure classes
-    - Multi-core training using all 16 allocated CPUs
+    2. Memory bank conflicts cause 15.8x latency spikes. Stride-32 access
+       patterns should be avoided in shared memory kernels.
 
-#### Component 4: Unsupervised Anomaly Detection
-    - Isolation Forest for zero-day anomaly detection
-    - No labels required - detects unknown failure patterns
-    - 150,000 anomalous states identified
+    3. Block 512 achieved optimal occupancy. Block 1024 was slower due to
+       register pressure causing spills to slower memory.
 
-### Results
+===============================================================================
+5. TECHNICAL DEEP DIVE
+===============================================================================
 
-    Classification Report (XGBoost):
-                        precision    recall  f1-score   support
-    Stable                 1.00      1.00      1.00    170032
-    Power Instability      0.99      0.98      0.99      9936
-    Thermal Throttling     0.99      0.98      0.99     10035
-    Memory Leak            1.00      1.00      1.00      9997
-    accuracy                                       1.00    200000
-    macro avg              0.99      0.99      0.99    200000
+Warp Divergence Explained:
+--------------------------
+A warp consists of 32 threads that execute in SIMT (Single Instruction,
+Multiple Threads) fashion. When threads diverge:
 
-    Anomaly Detection:
-    Normal States:    850,000
-    Anomalous States: 150,000
+    Step 1: Warp executes Path A for threads where condition is true
+    Step 2: Threads on Path B wait (inactive)
+    Step 3: Warp executes Path B for remaining threads
+    Step 4: Threads on Path A wait (inactive)
 
-### ASPIRE2A Compliance
-    - All jobs submitted via PBS (no login node compute)
-    - Data stored in /scratch (100TB) to avoid /home quota (50GB)
-    - Module environment: miniforge3 + cuda/12.2.2
-    - Conda environment: test_ai_amd
+This serialization is why divergent kernels took 1990ms vs 998ms uniform.
 
-## Project 3: CUDA Warp Architecture Explorer
+Memory Banking Explained:
+-------------------------
+A100 shared memory is divided into 32 banks (4 bytes each). When multiple
+threads access addresses in the same bank:
 
-### Objective
-Explore low-level GPU execution mechanics: warps, memory banks, and occupancy.
+    No Conflict:  Bank 0, Bank 1, Bank 2, Bank 3... (parallel access)
+    Conflict:     Bank 0, Bank 0, Bank 0, Bank 0... (serialized access)
 
-### Benchmarks
+Our Stride-32 test forced all 256 threads into 8 bank conflicts per warp,
+resulting in 545ms vs 34ms for conflict-free access.
 
-#### 1. Warp Divergence
-    Uniform Kernel:    998.43 ms
-    Divergent Kernel:  1990.37 ms
-    Degradation:       1.99× (2× slowdown)
+Occupancy Explained:
+--------------------
+Occupancy = (Active Warps / Maximum Possible Warps) x 100%
 
-    Explanation: When threads in a warp take different branches, execution 
-    serializes. A100 warps contain 32 threads executing in lockstep.
+Higher occupancy helps hide memory latency, but:
 
-#### 2. Shared Memory Bank Conflicts
-    Stride   Time (ms)   Bank Conflict Level
-    1        41.40       None (optimal)
-    2        34.48       Minimal
-    4        68.33       Low
-    8        136.38      Medium
-    16       272.72      High
-    32       545.49      Maximum (13× slower than stride 2)
+    - Too few threads (Block 128): Under-utilized SM resources
+    - Optimal (Block 512): Balanced registers, memory, and compute
+    - Too many (Block 1024): Register spilling to local memory (slow)
 
-    Explanation: A100 has 32 shared memory banks. Stride 32 causes all threads 
-    to access the same bank simultaneously, creating request queuing.
+===============================================================================
+6. ASPIRE2A HPC DEPLOYMENT
+===============================================================================
 
-#### 3. Kernel Occupancy Tuning
-    Block Size   Time (ms)   Occupancy Level
-    128          1.6763      Under-utilized
-    256          0.0061      Good
-    512          0.0051      Optimal (sweet spot)
-    1024         0.0061      Register pressure
+PBS Job Script Configuration:
+-----------------------------
+The project runs on ASPIRE2A via PBS Pro scheduler with enforced GPU ratios:
 
-    Explanation: Block 512 achieved optimal throughput by balancing thread count 
-    with register availability. Block 1024 caused register spilling.
-
-### Key Learnings
-    1. Compiler optimizations can mask bottlenecks - use volatile for memory tests
-    2. A100 Ampere architecture has independent thread scheduling (reduces divergence)
-    3. Occupancy does not equal performance - find the sweet spot empirically
-    4. Timer resolution matters - run kernels multiple times for measurable results
-
-## Technical Specifications
-
-### Hardware
-    Cluster:        NSCC ASPIRE2A
-    GPU:            NVIDIA A100-SXM4-40GB
-    CPU:            AMD EPYC 7713 (64 cores per node)
-    RAM:            512 GB per node
-    Storage:        100 TB /scratch, 50 GB /home
-
-### Software
-    Languages:      Python 3, C++/CUDA
-    ML Libraries:   Scikit-learn, XGBoost, Pandas, NumPy
-    CUDA:           Numba (Python), nvcc (C++)
-    Graph:          NetworkX, Matplotlib
-    Profiling:      Nsight Systems, CUDA Events
-    Scheduler:      PBS Pro
-
-### PBS Job Configuration (All Projects)
-    #PBS -N <job_name>
+    #PBS -N warp_arch_explorer
     #PBS -l select=1:ncpus=16:mem=110G:ngpus=1
     #PBS -l walltime=01:00:00
     #PBS -q normal
-    #PBS -P <project_id>
-    #PBS -o logs/output.txt
-    #PBS -e logs/error.txt
+    #PBS -P <PROJECT_ID>
 
-## Quick Start
+Resource Ratio (Enforced by ASPIRE2A):
+    - 1 GPU = 16 CPUs + 110 GB RAM
+    - This ensures fair resource allocation across users
 
-### Prerequisites
-    1. ASPIRE2A account with GPU queue access
-    2. Conda environment with required packages
-    3. PBS job submission permissions
-
-### Setup
-    ssh <userid>@aspire2a.nscc.sg
+Module Environment:
+-------------------
+    module load cuda/12.2.2
     module load miniforge3
     conda activate test_ai_amd
-    cd ~/AMDProjects/gpu-reliability-platform
 
-### Run Project 2 (ML Pipeline)
-    qsub project-2-failure-ml/run_gpu_pipeline.pbs
-    qstat -u $USER  # Monitor job
-    cat logs/pbs_output.txt  # View results
+Compilation:
+------------
+    nvcc -o bin/warp_divergence src/warp_divergence.cu
+    nvcc -o bin/memory_bank src/memory_bank.cu
+    nvcc -o bin/occupancy src/occupancy.cu
 
-### Run Project 3 (Architecture Benchmarks)
-    qsub project-3-warp-architecture/run_benchmarks.pbs
-    python src/analyze_results.py  # Generate plots
+===============================================================================
+7. QUICK START GUIDE
+===============================================================================
 
-## Results Summary
+Step 1: Clone Repository
+------------------------
+    git clone https://github.com/yourusername/cuda-warp-architecture-explorer.git
+    cd cuda-warp-architecture-explorer
 
-    Project    Focus              Key Metric                    Status
-    1          Performance        5.9× memory bottleneck        Complete
-    2          ML + Simulation    99% F1, 150K anomalies        Complete
-    3          Architecture       2× divergence, 13× banking    Complete
+Step 2: Submit PBS Job (ASPIRE2A)
+---------------------------------
+    qsub run_benchmarks.pbs
 
-## Why This Matters
+Step 3: Monitor Job Status
+--------------------------
+    qstat -u <your_username>
 
-GPU clusters power AI training, scientific computing, and cloud infrastructure. 
-When GPUs fail:
+Step 4: View Results
+--------------------
+    cat logs/warp_output.txt
+    python src/analyze_results.py
 
-    - Millions in compute resources go idle
-    - Training jobs lose hours of progress
-    - Production services experience downtime
+Step 5: Check Generated Plots
+-----------------------------
+    ls results/
+    # Output: plot_divergence.png, plot_memory.png, plot_occupancy.png
 
-This platform demonstrates how to:
+===============================================================================
+8. REPOSITORY STRUCTURE
+===============================================================================
 
-    1. Simulate hardware failures at scale (CUDA parallel generation)
-    2. Diagnose root causes automatically (ML classification)
-    3. Detect unknown anomalies (unsupervised learning)
-    4. Understand hardware internals (warp/memory/occupancy analysis)
+cuda-warp-architecture-explorer/
+    ├── src/
+    │   ├── warp_divergence.cu      # Warp divergence benchmark kernel
+    │   ├── memory_bank.cu          # Shared memory bank conflict kernel
+    │   ├── occupancy.cu            # Block size occupancy kernel
+    │   └── analyze_results.py      # Python analysis and plotting
+    ├── bin/
+    │   ├── warp_divergence         # Compiled divergence binary
+    │   ├── memory_bank             # Compiled memory bank binary
+    │   └── occupancy               # Compiled occupancy binary
+    ├── results/
+    │   ├── warp_divergence.csv     # Timing results (divergence)
+    │   ├── memory_bank.csv         # Timing results (banking)
+    │   ├── occupancy.csv           # Timing results (occupancy)
+    │   ├── plot_divergence.png     # Visualization (divergence)
+    │   ├── plot_memory.png         # Visualization (banking)
+    │   └── plot_occupancy.png      # Visualization (occupancy)
+    ├── logs/
+    │   └── warp_output.txt         # PBS job output log
+    ├── run_benchmarks.pbs          # PBS job submission script
+    └── README.md                   # This file
 
-## Future Work
+===============================================================================
+9. KEY LEARNINGS
+===============================================================================
 
-    - Real telemetry ingestion from production GPU clusters
-    - GPU-accelerated graph analytics using RAPIDS cuGraph
-    - Distributed training across multiple A100 nodes
-    - Integration with NVIDIA DCGM for real hardware monitoring
-    - Visualization dashboard for failure propagation
+1. Compiler Optimization Can Hide Bottlenecks
+   ---------------------------------------------
+   Initial benchmarks showed INVERTED results (divergence was faster).
+   The compiler was optimizing away the very patterns we wanted to measure.
+   Fix: Used volatile __shared__ and equalized compute intensity.
 
-## References
+2. A100 Architecture Differs from Textbook Examples
+   -------------------------------------------------
+   Ampere's Independent Thread Scheduling reduces divergence penalties
+   compared to Volta/Tesla. Expected 5-10x slowdown, measured ~2x.
 
-    - ASPIRE2A QuickStart Guide: NSCC Documentation
-    - CUDA Programming Guide: NVIDIA Developer
-    - XGBoost Documentation: https://xgboost.readthedocs.io
-    - Numba CUDA Guide: https://numba.readthedocs.io
+3. Occupancy Does Not Equal Performance
+   -------------------------------------
+   Block 512 outperformed Block 1024 despite lower theoretical occupancy.
+   Register pressure and memory bandwidth are better optimization targets.
 
-## License
+4. Real Profiling Requires Careful Kernel Design
+   ----------------------------------------------
+   Timing must account for:
+       - Warmup runs (first kernel launch is slower)
+       - Multiple iterations (average over 10+ runs)
+       - CUDA event synchronization (avoid measuring async overhead)
 
-MIT License - Feel free to use for educational and research purposes.
+===============================================================================
+10. LICENSE
+===============================================================================
 
-## Contact
+MIT License
 
-For questions about this project or ASPIRE2A usage:
-    - GitHub Issues: [Your Repo Issues]
-    - NSCC Support: help@nscc.sg
-    - Project Documentation: See individual project folders
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================================
+                              END OF README
+===============================================================================
