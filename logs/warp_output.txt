@@ -1,0 +1,41 @@
+=== Job started on x1000c3s4b0n1 ===
+=== Compiling CUDA Kernels ===
+=== Running Warp Divergence Benchmark ===
+Warp Divergence Benchmark Results:
+Uniform Time: 998.4327 ms
+Divergent Time: 1990.3652 ms
+Performance Degradation: 1.99x
+=== Running Memory Bank Benchmark ===
+Stride 1: 41.4003 ms
+Stride 2: 34.4801 ms
+Stride 4: 68.3274 ms
+Stride 8: 136.3763 ms
+Stride 16: 272.7178 ms
+Stride 32: 545.4889 ms
+=== Running Occupancy Benchmark ===
+Block Size 128: 1.6763 ms
+Block Size 256: 0.0061 ms
+Block Size 512: 0.0051 ms
+Block Size 1024: 0.0061 ms
+=== GPU INFO ===
+Thu Mar 26 18:01:45 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 550.163.01             Driver Version: 550.163.01     CUDA Version: 12.4     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-40GB          On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   45C    P0             79W /  400W |       1MiB /  40960MiB |     21%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+=== Job Complete ===

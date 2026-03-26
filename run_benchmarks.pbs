@@ -1,0 +1,41 @@
+#!/bin/bash
+#PBS -N warp_arch_explorer
+#PBS -l select=1:ncpus=16:mem=110G:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -q normal
+#PBS -P personal-rohan023
+#PBS -o logs/warp_output.txt
+#PBS -e logs/warp_error.txt
+
+cd $PBS_O_WORKDIR
+
+echo "=== Job started on $(hostname) ==="
+
+# 1. Load Modules (Matches previous successful projects)
+module load cuda/12.2.2
+module load miniforge3
+
+# 2. Create Results Directory
+mkdir -p results
+
+# 3. Compile CUDA Kernels
+echo "=== Compiling CUDA Kernels ==="
+nvcc -o bin/warp_divergence src/warp_divergence.cu
+nvcc -o bin/memory_bank src/memory_bank.cu
+nvcc -o bin/occupancy src/occupancy.cu
+
+# 4. Run Benchmarks
+echo "=== Running Warp Divergence Benchmark ==="
+./bin/warp_divergence
+
+echo "=== Running Memory Bank Benchmark ==="
+./bin/memory_bank
+
+echo "=== Running Occupancy Benchmark ==="
+./bin/occupancy
+
+# 5. Check GPU Status
+echo "=== GPU INFO ==="
+nvidia-smi
+
+echo "=== Job Complete ==="
